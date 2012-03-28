@@ -2,7 +2,7 @@ package pcap
 
 import (
 	"fmt"
-	//"log"
+	"log"
 	"net"
 	"reflect"
 	"strings"
@@ -85,7 +85,7 @@ func decodeuint32(pkt []byte) uint32 {
 }
 
 // Decode decodes the headers of a packet.
-func (p *Packet) Decode(pcap *FragPcap) {
+func (p *Packet) Decode(m FragsMap) {
 	p.Type = int(decodeuint16(p.Data[12:14]))
 	p.DestMac = decodemac(p.Data[0:6])
 	p.SrcMac = decodemac(p.Data[6:12])
@@ -93,9 +93,9 @@ func (p *Packet) Decode(pcap *FragPcap) {
 
 	switch p.Type {
 	case TYPE_IP:
-		p.decodeIp(pcap)
+		p.decodeIp(m)
 	case TYPE_IP6:
-		p.decodeIp6(pcap)
+		p.decodeIp6(m)
 	case TYPE_ARP:
 		p.decodeArp()
 	}
@@ -217,7 +217,7 @@ type Iphdr struct {
 	DestIp     []byte
 }
 
-func (p *Packet) decodeIp(pcap *FragPcap) {
+func (p *Packet) decodeIp(m FragsMap) {
 	pkt := p.Payload
 	ip := new(Iphdr)
 
@@ -242,9 +242,11 @@ func (p *Packet) decodeIp(pcap *FragPcap) {
 	p.Headers = append(p.Headers, ip)
 	p.IP = ip
 	if ip.Flags != IP_FRAG_NONE {
-		if !pcap.Frags.Add(ip, p) {
+		if !m.Add(ip, p) {
+			log.Println("dbg:")
 			return // not complete
 		}
+		log.Println("dbg:")
 		//TODO: clear frags according to TTL
 	}
 	switch ip.Protocol {
@@ -255,7 +257,7 @@ func (p *Packet) decodeIp(pcap *FragPcap) {
 	case IP_ICMP:
 		p.decodeIcmp()
 	case IP_INIP:
-		p.decodeIp(pcap)
+		p.decodeIp(m)
 	}
 }
 
@@ -441,7 +443,7 @@ type Ip6hdr struct {
 	DestIp       []byte // 16 bytes
 }
 
-func (p *Packet) decodeIp6(pcap *FragPcap) {
+func (p *Packet) decodeIp6(m FragsMap) {
 	pkt := p.Payload
 	ip6 := new(Ip6hdr)
 	ip6.Version = uint8(pkt[0]) >> 4
@@ -463,7 +465,7 @@ func (p *Packet) decodeIp6(pcap *FragPcap) {
 	case IP_ICMP:
 		p.decodeIcmp()
 	case IP_INIP:
-		p.decodeIp(pcap)
+		p.decodeIp(m)
 	}
 }
 

@@ -15,6 +15,7 @@ int hack_pcap_next_ex(pcap_t *p, struct pcap_pkthdr **pkt_header,
 import "C"
 import (
 	"errors"
+	"log"
 	"net"
 	"sort"
 	"syscall"
@@ -36,12 +37,9 @@ type FragsMap map[FragKey]*FragData
 type Pcap struct {
 	cptr *C.pcap_t
 }
-type FragPcap struct {
-	Pcap
-	Frags FragsMap
-}
 
 func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
+	log.Println("dbg:Add()")
 	ok := false
 	key := FragKey{Id: ip.Id}
 	copy(key.SrcIp[:], ip.SrcIp)
@@ -51,16 +49,19 @@ func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
 	var fData *FragData
 	fData, exist = (*f)[key]
 	if !exist {
+		log.Println("dbg:not exist()")
 		fData = &FragData{}
 		fData.Payloads = make(map[uint16][]byte, 10)
 		fData.Payloads[ip.FragOffset] = p.Payload
 	} else {
+		log.Println("dbg:exist()")
 		//TODO: validate fragsOffset
 		fData.Payloads[ip.FragOffset] = p.Payload
 	}
 	if ip.Flags == IP_FRAG_END {
 		// NOTE: only for IPv4
 		fData.Length = 20 + uint16(len(p.Payload))
+		log.Println("dbg:fData.Length=", fData.Length)
 	}
 	if fData.Length > 0 { // check if all frags collected
 		index := make([]int, len(fData.Payloads))
@@ -73,16 +74,25 @@ func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
 		payloads := []byte{}
 		ok = true
 		for _, off := range index {
+			log.Println("dbg:len(payloads)=", len(payloads),
+				"off*8=", off*8)
 			if len(payloads) != off*8 {
 				ok = false
 				break
 			}
 			payloads = append(payloads, fData.Payloads[uint16(off)]...)
+			log.Println("dbg:len(payloads)=", len(payloads))
 		}
 		if ok {
+			log.Println("dbg:len(payloads)=", len(payloads),
+				"fData.Length=", fData.Length)
 			if uint16(len(payloads)) == fData.Length {
+				log.Println("dbg:before ip.Length=", ip.Length,
+					"len(p.Payload)=", len(p.Payload))
 				ip.Length = fData.Length
 				p.Payload = payloads
+				log.Println("dbg:after ip.Length=", ip.Length,
+					"len(p.Payload)=", len(p.Payload))
 				// clear old frags
 				delete(*f, key)
 			}
