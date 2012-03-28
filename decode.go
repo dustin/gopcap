@@ -2,6 +2,7 @@ package pcap
 
 import (
 	"fmt"
+	//"log"
 	"net"
 	"reflect"
 	"strings"
@@ -13,10 +14,13 @@ const (
 	TYPE_ARP = 0x0806
 	TYPE_IP6 = 0x86DD
 
-	IP_ICMP = 1
-	IP_INIP = 4
-	IP_TCP  = 6
-	IP_UDP  = 17
+	IP_ICMP      = 1
+	IP_INIP      = 4
+	IP_TCP       = 6
+	IP_UDP       = 17
+	IP_FRAG_NONE = 2
+	IP_FRAG_MORE = 1
+	IP_FRAG_END  = 0
 )
 
 const (
@@ -81,7 +85,7 @@ func decodeuint32(pkt []byte) uint32 {
 }
 
 // Decode decodes the headers of a packet.
-func (p *Packet) Decode() {
+func (p *Packet) Decode(pcap *FragPcap) {
 	p.Type = int(decodeuint16(p.Data[12:14]))
 	p.DestMac = decodemac(p.Data[0:6])
 	p.SrcMac = decodemac(p.Data[6:12])
@@ -89,9 +93,9 @@ func (p *Packet) Decode() {
 
 	switch p.Type {
 	case TYPE_IP:
-		p.decodeIp()
+		p.decodeIp(pcap)
 	case TYPE_IP6:
-		p.decodeIp6()
+		p.decodeIp6(pcap)
 	case TYPE_ARP:
 		p.decodeArp()
 	}
@@ -123,7 +127,7 @@ func (p *Packet) headerString(headers []interface{}) string {
 	if len(headers) >= 2 {
 		if addr, ok := headers[0].(addrHdr); ok {
 			if _, ok := headers[1].(addrHdr); ok {
-				return fmt.Sprintf("%s > %s IP in IP: ",
+				return fmt.Sprintf("%s > %s IP in IP:%s ",
 					addr.SrcAddr(), addr.DestAddr(), p.headerString(headers[1:]))
 			}
 		}
@@ -213,7 +217,7 @@ type Iphdr struct {
 	DestIp     []byte
 }
 
-func (p *Packet) decodeIp() {
+func (p *Packet) decodeIp(pcap *FragPcap) {
 	pkt := p.Payload
 	ip := new(Iphdr)
 
@@ -237,7 +241,12 @@ func (p *Packet) decodeIp() {
 	p.Payload = pkt[ip.Ihl*4 : pEnd]
 	p.Headers = append(p.Headers, ip)
 	p.IP = ip
-
+	if ip.Flags != IP_FRAG_NONE {
+		if !pcap.Frags.Add(ip, p) {
+			return // not complete
+		}
+		//TODO: clear frags according to TTL
+	}
 	switch ip.Protocol {
 	case IP_TCP:
 		p.decodeTcp()
@@ -246,7 +255,7 @@ func (p *Packet) decodeIp() {
 	case IP_ICMP:
 		p.decodeIcmp()
 	case IP_INIP:
-		p.decodeIp()
+		p.decodeIp(pcap)
 	}
 }
 
@@ -432,7 +441,7 @@ type Ip6hdr struct {
 	DestIp       []byte // 16 bytes
 }
 
-func (p *Packet) decodeIp6() {
+func (p *Packet) decodeIp6(pcap *FragPcap) {
 	pkt := p.Payload
 	ip6 := new(Ip6hdr)
 	ip6.Version = uint8(pkt[0]) >> 4
@@ -454,7 +463,7 @@ func (p *Packet) decodeIp6() {
 	case IP_ICMP:
 		p.decodeIcmp()
 	case IP_INIP:
-		p.decodeIp()
+		p.decodeIp(pcap)
 	}
 }
 

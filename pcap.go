@@ -16,12 +16,79 @@ import "C"
 import (
 	"errors"
 	"net"
+	"sort"
 	"syscall"
 	"unsafe"
 )
 
+type FragKey struct {
+	SrcIp, DestIp [4]byte
+	Id            uint16
+}
+
+type FragData struct {
+	Length   uint16
+	Payloads map[uint16][]byte
+}
+
+type FragsMap map[FragKey]*FragData
+
 type Pcap struct {
 	cptr *C.pcap_t
+}
+type FragPcap struct {
+	Pcap
+	Frags FragsMap
+}
+
+func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
+	ok := false
+	key := FragKey{Id: ip.Id}
+	copy(key.SrcIp[:], ip.SrcIp)
+	copy(key.DestIp[:], ip.DestIp)
+	//key := FragKey{ip.SrcIp[:], ip.DestIp[:4], ip.Id}
+	var exist bool
+	var fData *FragData
+	fData, exist = (*f)[key]
+	if !exist {
+		fData = &FragData{}
+		fData.Payloads = make(map[uint16][]byte, 10)
+		fData.Payloads[ip.FragOffset] = p.Payload
+	} else {
+		//TODO: validate fragsOffset
+		fData.Payloads[ip.FragOffset] = p.Payload
+	}
+	if ip.Flags == IP_FRAG_END {
+		// NOTE: only for IPv4
+		fData.Length = 20 + uint16(len(p.Payload))
+	}
+	if fData.Length > 0 { // check if all frags collected
+		index := make([]int, len(fData.Payloads))
+		i := 0
+		for off := range fData.Payloads {
+			index[i] = int(off)
+			i++
+		}
+		sort.Ints(index)
+		payloads := []byte{}
+		ok = true
+		for _, off := range index {
+			if len(payloads) != off*8 {
+				ok = false
+				break
+			}
+			payloads = append(payloads, fData.Payloads[uint16(off)]...)
+		}
+		if ok {
+			if uint16(len(payloads)) == fData.Length {
+				ip.Length = fData.Length
+				p.Payload = payloads
+				// clear old frags
+				delete(*f, key)
+			}
+		}
+	}
+	return ok
 }
 
 type Stat struct {
