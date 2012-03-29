@@ -85,7 +85,7 @@ func decodeuint32(pkt []byte) uint32 {
 }
 
 // Decode decodes the headers of a packet.
-func (p *Packet) Decode(m FragsMap) {
+func (p *Packet) Decode(m *FragsMap) {
 	p.Type = int(decodeuint16(p.Data[12:14]))
 	p.DestMac = decodemac(p.Data[0:6])
 	p.SrcMac = decodemac(p.Data[6:12])
@@ -217,7 +217,7 @@ type Iphdr struct {
 	DestIp     []byte
 }
 
-func (p *Packet) decodeIp(m FragsMap) {
+func (p *Packet) decodeIp(m *FragsMap) {
 	pkt := p.Payload
 	ip := new(Iphdr)
 
@@ -443,7 +443,7 @@ type Ip6hdr struct {
 	DestIp       []byte // 16 bytes
 }
 
-func (p *Packet) decodeIp6(m FragsMap) {
+func (p *Packet) decodeIp6(m *FragsMap) {
 	pkt := p.Payload
 	ip6 := new(Ip6hdr)
 	ip6.Version = uint8(pkt[0]) >> 4

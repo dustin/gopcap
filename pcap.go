@@ -39,7 +39,7 @@ type Pcap struct {
 }
 
 func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
-	log.Println("dbg:Add()")
+	log.Printf("dbg:Add(%p)\n", f)
 	ok := false
 	key := FragKey{Id: ip.Id}
 	copy(key.SrcIp[:], ip.SrcIp)
@@ -48,11 +48,13 @@ func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
 	var exist bool
 	var fData *FragData
 	fData, exist = (*f)[key]
+	log.Println("dbg:len(f)=", len(*f), "key=", key)
 	if !exist {
 		log.Println("dbg:not exist()")
 		fData = &FragData{}
 		fData.Payloads = make(map[uint16][]byte, 10)
 		fData.Payloads[ip.FragOffset] = p.Payload
+		(*f)[key] = fData
 	} else {
 		log.Println("dbg:exist()")
 		//TODO: validate fragsOffset
@@ -60,8 +62,8 @@ func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
 	}
 	if ip.Flags == IP_FRAG_END {
 		// NOTE: only for IPv4
-		fData.Length = 20 + uint16(len(p.Payload))
-		log.Println("dbg:fData.Length=", fData.Length)
+		fData.Length = 20 + uint16(len(p.Payload)) + 8*ip.FragOffset
+		log.Println("dbg:calc new fData.Length=", fData.Length)
 	}
 	if fData.Length > 0 { // check if all frags collected
 		index := make([]int, len(fData.Payloads))
@@ -84,9 +86,9 @@ func (f *FragsMap) Add(ip *Iphdr, p *Packet) bool {
 			log.Println("dbg:len(payloads)=", len(payloads))
 		}
 		if ok {
-			log.Println("dbg:len(payloads)=", len(payloads),
+			log.Println("dbg:ok len(payloads)=", len(payloads),
 				"fData.Length=", fData.Length)
-			if uint16(len(payloads)) == fData.Length {
+			if (20 + uint16(len(payloads))) == fData.Length {
 				log.Println("dbg:before ip.Length=", ip.Length,
 					"len(p.Payload)=", len(p.Payload))
 				ip.Length = fData.Length
