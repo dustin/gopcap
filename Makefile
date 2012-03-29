@@ -4,3 +4,5 @@ all : pcap.go decode.go io.go
 	gofmt -s -w $^
 	go build
 	go install
+test : all decode_test.go
+	go test

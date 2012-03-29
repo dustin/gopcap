@@ -2,7 +2,6 @@ package pcap
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"reflect"
 	"strings"
@@ -243,10 +242,8 @@ func (p *Packet) decodeIp(m *FragsMap) {
 	p.IP = ip
 	if ip.Flags != IP_FRAG_NONE {
 		if !m.Add(ip, p) {
-			log.Println("dbg:")
 			return // not complete
 		}
-		log.Println("dbg:")
 		//TODO: clear frags according to TTL
 	}
 	switch ip.Protocol {
